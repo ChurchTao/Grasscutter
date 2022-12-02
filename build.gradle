@@ -10,7 +10,7 @@ import emu.grasscutter.gen.GenerateActivityConditions
 
 buildscript {
     repositories {
-        maven { url "https://plugins.gradle.org/m2/" }
+        maven { url "https://maven.aliyun.com/nexus/content/groups/public" }
     }
     dependencies {
         classpath 'com.google.protobuf:protobuf-gradle-plugin:0.8.18'
