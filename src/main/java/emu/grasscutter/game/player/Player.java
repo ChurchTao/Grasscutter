@@ -4,8 +4,8 @@ import dev.morphia.annotations.*;
 import emu.grasscutter.GameConstants;
 import emu.grasscutter.Grasscutter;
 import emu.grasscutter.data.GameData;
-import emu.grasscutter.data.excels.PlayerLevelData;
-import emu.grasscutter.data.excels.WeatherData;
+import emu.grasscutter.data.binout.ConfigLevelEntity;
+import emu.grasscutter.data.excels.*;
 import emu.grasscutter.database.DatabaseHelper;
 import emu.grasscutter.game.Account;
 import emu.grasscutter.game.CoopRequest;
@@ -14,12 +14,13 @@ import emu.grasscutter.game.activity.ActivityManager;
 import emu.grasscutter.game.avatar.Avatar;
 import emu.grasscutter.game.avatar.AvatarStorage;
 import emu.grasscutter.game.battlepass.BattlePassManager;
-import emu.grasscutter.game.entity.*;
-import emu.grasscutter.game.home.GameHome;
+import emu.grasscutter.game.entity.EntityAvatar;
+import emu.grasscutter.game.entity.GameEntity;
 import emu.grasscutter.game.expedition.ExpeditionInfo;
 import emu.grasscutter.game.friends.FriendsList;
 import emu.grasscutter.game.friends.PlayerProfile;
 import emu.grasscutter.game.gacha.PlayerGachaInfo;
+import emu.grasscutter.game.home.GameHome;
 import emu.grasscutter.game.inventory.GameItem;
 import emu.grasscutter.game.inventory.Inventory;
 import emu.grasscutter.game.mail.Mail;
@@ -29,36 +30,39 @@ import emu.grasscutter.game.managers.cooking.CookingCompoundManager;
 import emu.grasscutter.game.managers.cooking.CookingManager;
 import emu.grasscutter.game.managers.FurnitureManager;
 import emu.grasscutter.game.managers.ResinManager;
+import emu.grasscutter.game.managers.SotSManager;
 import emu.grasscutter.game.managers.deforestation.DeforestationManager;
 import emu.grasscutter.game.managers.energy.EnergyManager;
 import emu.grasscutter.game.managers.forging.ActiveForgeData;
 import emu.grasscutter.game.managers.forging.ForgingManager;
-import emu.grasscutter.game.managers.mapmark.*;
+import emu.grasscutter.game.managers.mapmark.MapMark;
+import emu.grasscutter.game.managers.mapmark.MapMarksManager;
 import emu.grasscutter.game.managers.stamina.StaminaManager;
-import emu.grasscutter.game.managers.SotSManager;
-import emu.grasscutter.game.props.ActionReason;
-import emu.grasscutter.game.props.ClimateType;
-import emu.grasscutter.game.props.PlayerProperty;
-import emu.grasscutter.game.props.WatcherTriggerType;
+import emu.grasscutter.game.props.*;
 import emu.grasscutter.game.quest.QuestManager;
-import emu.grasscutter.game.quest.enums.QuestTrigger;
+import emu.grasscutter.game.quest.enums.QuestCond;
+import emu.grasscutter.game.quest.enums.QuestContent;
 import emu.grasscutter.game.shop.ShopLimit;
 import emu.grasscutter.game.tower.TowerData;
 import emu.grasscutter.game.tower.TowerManager;
 import emu.grasscutter.game.world.Scene;
 import emu.grasscutter.game.world.World;
 import emu.grasscutter.net.packet.BasePacket;
-import emu.grasscutter.net.proto.*;
 import emu.grasscutter.net.proto.AbilityInvokeEntryOuterClass.AbilityInvokeEntry;
 import emu.grasscutter.net.proto.AttackResultOuterClass.AttackResult;
 import emu.grasscutter.net.proto.CombatInvokeEntryOuterClass.CombatInvokeEntry;
 import emu.grasscutter.net.proto.GadgetInteractReqOuterClass.GadgetInteractReq;
 import emu.grasscutter.net.proto.MpSettingTypeOuterClass.MpSettingType;
 import emu.grasscutter.net.proto.OnlinePlayerInfoOuterClass.OnlinePlayerInfo;
+import emu.grasscutter.net.proto.PlayerApplyEnterMpResultNotifyOuterClass;
 import emu.grasscutter.net.proto.PlayerLocationInfoOuterClass.PlayerLocationInfo;
+import emu.grasscutter.net.proto.PlayerWorldLocationInfoOuterClass;
 import emu.grasscutter.net.proto.ProfilePictureOuterClass.ProfilePicture;
 import emu.grasscutter.net.proto.PropChangeReasonOuterClass.PropChangeReason;
+import emu.grasscutter.net.proto.ShowAvatarInfoOuterClass;
 import emu.grasscutter.net.proto.SocialDetailOuterClass.SocialDetail;
+import emu.grasscutter.net.proto.SocialShowAvatarInfoOuterClass;
+import emu.grasscutter.net.proto.TrialAvatarGrantRecordOuterClass.TrialAvatarGrantRecord.GrantReason;
 import emu.grasscutter.scripts.data.SceneRegion;
 import emu.grasscutter.server.event.player.PlayerJoinEvent;
 import emu.grasscutter.server.event.player.PlayerQuitEvent;
@@ -67,15 +71,14 @@ import emu.grasscutter.server.game.GameSession;
 import emu.grasscutter.server.game.GameSession.SessionState;
 import emu.grasscutter.server.packet.send.*;
 import emu.grasscutter.utils.DateHelper;
-import emu.grasscutter.utils.Position;
 import emu.grasscutter.utils.MessageHandler;
+import emu.grasscutter.utils.Position;
 import emu.grasscutter.utils.Utils;
+import emu.grasscutter.net.proto.AvatarDelNotifyOuterClass.AvatarDelNotify;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import lombok.Getter;
 import lombok.Setter;
-
-import static emu.grasscutter.config.Configuration.*;
 
 import java.time.DayOfWeek;
 import java.time.Instant;
@@ -84,6 +87,8 @@ import java.time.ZoneId;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.LinkedBlockingQueue;
+
+import static emu.grasscutter.config.Configuration.GAME_OPTIONS;
 
 @Entity(value = "players", useDiscriminator = false)
 public class Player {
@@ -115,6 +120,7 @@ public class Player {
     @Getter private Set<Integer> nameCardList;
     @Getter private Set<Integer> flyCloakList;
     @Getter private Set<Integer> costumeList;
+    @Getter private Set<Integer> personalLineList;
     @Getter @Setter private Set<Integer> rewardedLevels;
     @Getter @Setter private Set<Integer> realmList;
     @Getter private Set<Integer> unlockedForgingBlueprints;
@@ -194,6 +200,9 @@ public class Player {
     @Getter @Setter private int nextResinRefresh;
     @Getter @Setter private int lastDailyReset;
     @Getter private transient MpSettingType mpSetting = MpSettingType.MP_SETTING_TYPE_ENTER_AFTER_APPLY;  // TODO
+    @Getter private long playerGameTime = 0;
+
+    @Getter private PlayerProgress playerProgress;
 
     @Deprecated
     @SuppressWarnings({"rawtypes", "unchecked"}) // Morphia only!
@@ -223,6 +232,7 @@ public class Player {
         this.nameCardList = new HashSet<>();
         this.flyCloakList = new HashSet<>();
         this.costumeList = new HashSet<>();
+        this.personalLineList = new HashSet<>();
         this.towerData = new TowerData();
         this.collectionRecordStore = new PlayerCollectionRecords();
         this.unlockedForgingBlueprints = new HashSet<>();
@@ -237,6 +247,7 @@ public class Player {
         this.unlockedSceneAreas = new HashMap<>();
         this.unlockedScenePoints = new HashMap<>();
         this.chatEmojiIdList = new ArrayList<>();
+        this.playerProgress = new PlayerProgress();
 
         this.attackResults = new LinkedBlockingQueue<>();
         this.coopRequests = new Int2ObjectOpenHashMap<>();
@@ -297,6 +308,13 @@ public class Player {
         this.furnitureManager = new FurnitureManager(this);
         this.cookingManager = new CookingManager(this);
         this.cookingCompoundManager=new CookingCompoundManager(this);
+    }
+
+    public void updatePlayerGameTime(long gameTime){
+        if(playerGameTime == gameTime) return;
+
+        this.playerGameTime = gameTime;
+        this.save();
     }
 
     public int getUid() {
@@ -424,6 +442,7 @@ public class Player {
 
             // Handle open state unlocks from level-up.
             this.getProgressManager().tryUnlockOpenStates();
+            this.getQuestManager().queueEvent(QuestContent.QUEST_CONTENT_PLAYER_LEVEL_UP, level);
 
             return true;
         }
@@ -564,11 +583,11 @@ public class Player {
 
     public void onEnterRegion(SceneRegion region) {
         getQuestManager().forEachActiveQuest(quest -> {
-            if (quest.getTriggers().containsKey("ENTER_REGION_"+ region.config_id)) {
+            if (quest.getTriggerData() != null && quest.getTriggers().containsKey("ENTER_REGION_"+ region.config_id)) {
                 // If trigger hasn't been fired yet
                 if (!Boolean.TRUE.equals(quest.getTriggers().put("ENTER_REGION_"+ region.config_id, true))) {
                     //getSession().send(new PacketServerCondMeetQuestListUpdateNotify());
-                    getQuestManager().triggerEvent(QuestTrigger.QUEST_CONTENT_TRIGGER_FIRE, quest.getTriggerData().get("ENTER_REGION_"+ region.config_id).getId(),0);
+                    getQuestManager().queueEvent(QuestContent.QUEST_CONTENT_TRIGGER_FIRE, quest.getTriggerData().get("ENTER_REGION_"+ region.config_id).getId(),0);
                 }
             }
         });
@@ -581,7 +600,7 @@ public class Player {
                 // If trigger hasn't been fired yet
                 if (!Boolean.TRUE.equals(quest.getTriggers().put("LEAVE_REGION_"+ region.config_id, true))) {
                     getSession().send(new PacketServerCondMeetQuestListUpdateNotify());
-                    getQuestManager().triggerEvent(QuestTrigger.QUEST_CONTENT_TRIGGER_FIRE, quest.getTriggerData().get("LEAVE_REGION_"+ region.config_id).getId(),0);
+                    getQuestManager().queueEvent(QuestContent.QUEST_CONTENT_TRIGGER_FIRE, quest.getTriggerData().get("LEAVE_REGION_"+ region.config_id).getId(),0);
                 }
             }
         });
@@ -787,6 +806,56 @@ public class Player {
         addAvatar(avatar, true);
     }
 
+    public void addAvatar(int avatarId) {
+        // I dont see why we cant do this lolz
+        addAvatar(new Avatar(avatarId), true);
+    }
+
+    public boolean addTrialAvatarForQuest(int trialAvatarId, GrantReason reason, int questMainId){
+        // TODO, other trial avatar like activity and element trial dungeon might have
+        // completely different scenario, this function is currently used for Quest Exec only
+        TrialAvatarData trialAvatar = GameData.getTrialAvatarDataMap().get(trialAvatarId);
+        if (trialAvatar == null) return false;
+
+        List<Integer> trialParams = trialAvatar.getTrialAvatarParamList();
+        if (trialParams == null || trialParams.size() < 2) return false;
+
+        Avatar avatar = new Avatar(trialParams.get(0));
+        if (avatar.getAvatarData() == null || !hasSentLoginPackets()) return false;
+
+        avatar.setOwner(this);
+        // Add trial weapons and relics
+        avatar.setTrialAvatarInfo(trialAvatar, reason, questMainId);
+        avatar.equipTrialItems();
+        // Recalc stats
+        avatar.recalcStats();
+
+        // Packet, mimic official server behaviour, add to player's bag but not saving to db
+        sendPacket(new PacketAvatarAddNotify(avatar, false));
+        // add to avatar to temporary trial team
+        getTeamManager().addAvatarToTrialTeam(avatar);
+        // Packet, mimic official server behaviour, neccessary to stop player from modifying team
+        sendPacket(new PacketAvatarTeamUpdateNotify(this));
+        return true;
+    }
+
+    public boolean removeTrialAvatar(int trialAvatarId){
+        EntityAvatar trialEntityAvatar = getTeamManager().trialAvatarInTeam(trialAvatarId);
+        if (trialEntityAvatar == null) return false;
+
+        Avatar trialAvatar = trialEntityAvatar.getAvatar();
+        // Packet, mimic official server behaviour
+        sendPacket(new PacketAvatarDelNotify(Arrays.asList(trialAvatar.getGuid())));
+        // Reset temporary trial team
+        getTeamManager().removeAvatarFromTrialTeam(trialEntityAvatar);
+
+        trialAvatar.removeTrialItems();
+        trialAvatar.removeOwner();
+        // Packet, mimic official server behaviour, necessary to unlock team modifying
+        sendPacket(new PacketAvatarTeamUpdateNotify());
+        return true;
+    }
+
     public void addFlycloak(int flycloakId) {
         this.getFlyCloakList().add(flycloakId);
         this.sendPacket(new PacketAvatarGainFlycloakNotify(flycloakId));
@@ -795,6 +864,11 @@ public class Player {
     public void addCostume(int costumeId) {
         this.getCostumeList().add(costumeId);
         this.sendPacket(new PacketAvatarGainCostumeNotify(costumeId));
+    }
+
+    public void addPersonalLine(int personalLineId) {
+        this.getPersonalLineList().add(personalLineId);
+        session.getPlayer().getQuestManager().queueEvent(QuestCond.QUEST_COND_PERSONAL_LINE_UNLOCK, personalLineId);
     }
 
     public void addNameCard(int nameCardId) {
@@ -821,6 +895,45 @@ public class Player {
         this.getServer().getChatSystem().sendPrivateMessageFromServer(getUid(), message.toString());
     }
 
+    public void setAvatarsAbilityForScene(Scene scene){
+        try{
+            String levelEntityConfig = scene.getSceneData().getLevelEntityConfig();
+            ConfigLevelEntity config = GameData.getConfigLevelEntityDataMap().get(levelEntityConfig);
+            if (config == null){
+                return;
+            }
+            List<Integer> avatarIds = scene.getSceneData().getSpecifiedAvatarList();
+            List<EntityAvatar> specifiedAvatarList = getTeamManager().getActiveTeam();
+
+            if (avatarIds != null && avatarIds.size() > 0){
+                // certain scene could limit specifc avatars' entry
+                specifiedAvatarList.clear();
+                for (int id : avatarIds){
+                    Avatar avatar = getAvatars().getAvatarById(id);
+                    if (avatar == null){
+                        continue;
+                    }
+                    specifiedAvatarList.add(new EntityAvatar(scene, avatar));
+                }
+            }
+
+            for (EntityAvatar entityAvatar : specifiedAvatarList){
+                AvatarData avatarData = entityAvatar.getAvatar().getAvatarData();
+                if (avatarData == null){
+                    continue;
+                }
+                avatarData.rebuildAbilityEmbryo();
+                if (config.getAvatarAbilities() == null){
+                    continue; // continue and not break because has to rebuild ability for the next avatar if any
+                }
+                for (ConfigLevelEntity.EntityAbilities abilities : config.getAvatarAbilities()){
+                    avatarData.getAbilities().add(Utils.abilityHash(abilities.getAbilityName()));
+                }
+            }
+        } catch (Exception e){
+            Grasscutter.getLogger().error("Error applying level entity config for scene {}", scene.getSceneData().getId(), e);
+        }
+    }
     /**
      * Sends a message to another player.
      *
@@ -1143,13 +1256,17 @@ public class Player {
         // Load from db
         this.getAvatars().loadFromDatabase();
         this.getInventory().loadFromDatabase();
-        this.getAvatars().postLoad(); // Needs to be called after inventory is handled
 
         this.getFriendsList().loadFromDatabase();
         this.getMailHandler().loadFromDatabase();
         this.getQuestManager().loadFromDatabase();
 
         this.loadBattlePassManager();
+        this.getAvatars().postLoad(); // Needs to be called after inventory is handled
+    }
+
+    public void onPlayerBorn() {
+        if (Grasscutter.getConfig().server.game.gameOptions.questing) getQuestManager().onPlayerBorn();
     }
 
     public void onLogin() {
@@ -1177,6 +1294,9 @@ public class Player {
 
         // Execute daily reset logic if this is a new day.
         this.doDailyReset();
+
+        // Activity needed for some quests
+        activityManager = new ActivityManager(this);
 
         // Rewind active quests, and put the player to a rewind position it finds (if any) of an active quest
         getQuestManager().onLogin();
@@ -1212,8 +1332,6 @@ public class Player {
         // Home
         home = GameHome.getByUid(getUid());
         home.onOwnerLogin(this);
-        // Activity
-        activityManager = new ActivityManager(this);
 
         session.send(new PacketPlayerEnterSceneNotify(this)); // Enter game world
         session.send(new PacketPlayerLevelRewardUpdateNotify(rewardedLevels));

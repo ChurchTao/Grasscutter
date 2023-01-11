@@ -11,14 +11,14 @@ import lombok.Getter;
 public class AvatarSkillData extends GameResource {
     @Getter(onMethod = @__(@Override))
     private int id;
-    private float cdTime;
-    private int costElemVal;
-    private int maxChargeNum;
-    private int triggerID;
-    private boolean isAttackCameraLock;
-    private int proudSkillGroupId;
-    private ElementType costElemType;
-    private long nameTextMapHash;
-    private long descTextMapHash;
-    private String abilityName;
+    @Getter private float cdTime;
+    @Getter private float costElemVal; // fight prop update uses float
+    @Getter private int maxChargeNum;
+    @Getter private int triggerID;
+    @Getter private boolean isAttackCameraLock;
+    @Getter private int proudSkillGroupId;
+    @Getter private ElementType costElemType;
+    @Getter private long nameTextMapHash;
+    @Getter private long descTextMapHash;
+    @Getter private String abilityName;
 }

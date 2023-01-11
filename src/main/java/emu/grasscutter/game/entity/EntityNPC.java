@@ -8,7 +8,7 @@ import emu.grasscutter.utils.Position;
 import it.unimi.dsi.fastutil.ints.Int2FloatMap;
 import lombok.Getter;
 
-public class EntityNPC extends GameEntity{
+public class EntityNPC extends GameEntity {
     @Getter(onMethod = @__(@Override))
     private final Position position;
     @Getter(onMethod = @__(@Override))
@@ -29,37 +29,45 @@ public class EntityNPC extends GameEntity{
 
     }
 
-    @Override public Int2FloatMap getFightProperties() {return null;}
+    @Override
+    public int getEntityTypeId() {
+        return metaNpc.npc_id;
+    }
+
+    @Override
+    public Int2FloatMap getFightProperties() {
+        return null;
+    }
 
     @Override
     public SceneEntityInfoOuterClass.SceneEntityInfo toProto() {
 
-       EntityAuthorityInfoOuterClass.EntityAuthorityInfo authority = EntityAuthorityInfoOuterClass.EntityAuthorityInfo.newBuilder()
-               .setAbilityInfo(AbilitySyncStateInfoOuterClass.AbilitySyncStateInfo.newBuilder())
-               .setRendererChangedInfo(EntityRendererChangedInfoOuterClass.EntityRendererChangedInfo.newBuilder())
-               .setAiInfo(SceneEntityAiInfoOuterClass.SceneEntityAiInfo.newBuilder()
-                       .setIsAiOpen(true)
-                       .setBornPos(getPosition().toProto()))
-               .setBornPos(getPosition().toProto())
-               .build();
+        EntityAuthorityInfoOuterClass.EntityAuthorityInfo authority = EntityAuthorityInfoOuterClass.EntityAuthorityInfo.newBuilder()
+            .setAbilityInfo(AbilitySyncStateInfoOuterClass.AbilitySyncStateInfo.newBuilder())
+            .setRendererChangedInfo(EntityRendererChangedInfoOuterClass.EntityRendererChangedInfo.newBuilder())
+            .setAiInfo(SceneEntityAiInfoOuterClass.SceneEntityAiInfo.newBuilder()
+                .setIsAiOpen(true)
+                .setBornPos(getPosition().toProto()))
+            .setBornPos(getPosition().toProto())
+            .build();
 
         SceneEntityInfoOuterClass.SceneEntityInfo.Builder entityInfo = SceneEntityInfoOuterClass.SceneEntityInfo.newBuilder()
-                .setEntityId(getId())
-                .setEntityType(ProtEntityTypeOuterClass.ProtEntityType.PROT_ENTITY_TYPE_NPC)
-                .setMotionInfo(MotionInfoOuterClass.MotionInfo.newBuilder()
-                        .setPos(getPosition().toProto())
-                        .setRot(getRotation().toProto())
-                        .setSpeed(VectorOuterClass.Vector.newBuilder()))
-                .addAnimatorParaList(AnimatorParameterValueInfoPairOuterClass.AnimatorParameterValueInfoPair.newBuilder())
-                .setEntityClientData(EntityClientDataOuterClass.EntityClientData.newBuilder())
-                .setEntityAuthorityInfo(authority)
-                .setLifeState(1);
+            .setEntityId(getId())
+            .setEntityType(ProtEntityTypeOuterClass.ProtEntityType.PROT_ENTITY_TYPE_NPC)
+            .setMotionInfo(MotionInfoOuterClass.MotionInfo.newBuilder()
+                .setPos(getPosition().toProto())
+                .setRot(getRotation().toProto())
+                .setSpeed(VectorOuterClass.Vector.newBuilder()))
+            .addAnimatorParaList(AnimatorParameterValueInfoPairOuterClass.AnimatorParameterValueInfoPair.newBuilder())
+            .setEntityClientData(EntityClientDataOuterClass.EntityClientData.newBuilder())
+            .setEntityAuthorityInfo(authority)
+            .setLifeState(1);
 
 
         entityInfo.setNpc(SceneNpcInfoOuterClass.SceneNpcInfo.newBuilder()
-                        .setNpcId(metaNpc.npc_id)
-                        .setBlockId(getBlockId())
-                .build());
+            .setNpcId(metaNpc.npc_id)
+            .setBlockId(getBlockId())
+            .build());
 
         return entityInfo.build();
     }

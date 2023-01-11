@@ -2,6 +2,7 @@ package emu.grasscutter.game.dungeons.challenge;
 
 import emu.grasscutter.Grasscutter;
 import emu.grasscutter.game.dungeons.challenge.trigger.ChallengeTrigger;
+import emu.grasscutter.game.dungeons.enums.DungeonPassConditionType;
 import emu.grasscutter.game.entity.EntityGadget;
 import emu.grasscutter.game.entity.EntityMonster;
 import emu.grasscutter.game.world.Scene;
@@ -65,7 +66,7 @@ public class WorldChallenge {
             return;
         }
         this.progress = true;
-        this.startedAt = System.currentTimeMillis();
+        this.startedAt = getScene().getSceneTimeSeconds();
         getScene().broadcastPacket(new PacketDungeonChallengeBeginNotify(this));
         challengeTriggers.forEach(t -> t.onBegin(this));
     }
@@ -75,9 +76,10 @@ public class WorldChallenge {
             return;
         }
         finish(true);
-        this.getScene().getScriptManager().callEvent(EventType.EVENT_CHALLENGE_SUCCESS,
+        this.getScene().getScriptManager().callEvent(
                 // TODO record the time in PARAM2 and used in action
-                new ScriptArgs().setParam2(finishedTime));
+                new ScriptArgs(EventType.EVENT_CHALLENGE_SUCCESS).setParam2(finishedTime));
+        this.getScene().triggerDungeonEvent(DungeonPassConditionType.DUNGEON_COND_FINISH_CHALLENGE, getChallengeId(), getChallengeIndex());
 
         challengeTriggers.forEach(t -> t.onFinish(this));
     }
@@ -87,14 +89,14 @@ public class WorldChallenge {
             return;
         }
         finish(false);
-        this.getScene().getScriptManager().callEvent(EventType.EVENT_CHALLENGE_FAIL, null);
+        this.getScene().getScriptManager().callEvent(new ScriptArgs(EventType.EVENT_CHALLENGE_FAIL));
         challengeTriggers.forEach(t -> t.onFinish(this));
     }
 
     private void finish(boolean success){
         this.progress = false;
         this.success = success;
-        this.finishedTime = (int)((System.currentTimeMillis() - this.startedAt) / 1000L);
+        this.finishedTime = (int)(getScene().getSceneTimeSeconds() - this.startedAt);
         getScene().broadcastPacket(new PacketDungeonChallengeFinishNotify(this));
     }
 

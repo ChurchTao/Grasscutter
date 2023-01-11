@@ -11,6 +11,7 @@ public class MonsterDescribeData extends GameResource {
     @Getter(onMethod = @__(@Override))
     private int id;
     private long nameTextMapHash;
-    private int titleID;
-    private int specialNameLabID;
+    private int titleId;
+    private int specialNameLabId;
+    private MonsterSpecialNameData specialNameData;
 }

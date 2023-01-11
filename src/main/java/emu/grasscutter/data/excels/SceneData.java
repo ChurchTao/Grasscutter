@@ -8,12 +8,17 @@ import emu.grasscutter.data.ResourceType;
 import emu.grasscutter.game.props.SceneType;
 import lombok.Getter;
 
+import java.util.List;
+import lombok.Getter;
+
 @ResourceType(name = "SceneExcelConfigData.json")
 @Getter
 public class SceneData extends GameResource {
     @Getter(onMethod = @__(@Override))
-    private int id;
+	private int id;
     @SerializedName("type")
-    private SceneType sceneType;
-    private String scriptData;
+	private SceneType sceneType;
+	private String scriptData;
+	@Getter private String levelEntityConfig;
+	@Getter private List<Integer> specifiedAvatarList;
 }

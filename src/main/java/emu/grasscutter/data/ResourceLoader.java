@@ -4,13 +4,20 @@ import com.google.gson.annotations.SerializedName;
 import emu.grasscutter.Grasscutter;
 import emu.grasscutter.data.binout.*;
 import emu.grasscutter.data.binout.AbilityModifier.AbilityModifierAction;
+import emu.grasscutter.data.binout.routes.SceneRoutes;
 import emu.grasscutter.data.common.PointData;
+import emu.grasscutter.data.server.GadgetMapping;
+import emu.grasscutter.game.dungeons.DungeonDrop;
 import emu.grasscutter.game.managers.blossom.BlossomConfig;
 import emu.grasscutter.game.quest.QuestEncryptionKey;
+import emu.grasscutter.game.quest.RewindData;
+import emu.grasscutter.game.quest.TeleportData;
 import emu.grasscutter.game.world.SpawnDataEntry;
 import emu.grasscutter.game.world.SpawnDataEntry.GridBlockId;
 import emu.grasscutter.game.world.SpawnDataEntry.SpawnGroupEntry;
+import emu.grasscutter.scripts.EntityControllerScriptManager;
 import emu.grasscutter.scripts.SceneIndexManager;
+import emu.grasscutter.scripts.ScriptLoader;
 import emu.grasscutter.utils.FileUtils;
 import emu.grasscutter.utils.JsonUtils;
 import emu.grasscutter.utils.TsvUtils;
@@ -30,6 +37,10 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import java.util.stream.Collectors;
+import java.util.Map.Entry;
+import javax.script.Bindings;
+import javax.script.CompiledScript;
 
 import static emu.grasscutter.utils.FileUtils.getDataPath;
 import static emu.grasscutter.utils.FileUtils.getResourcePath;
@@ -91,9 +102,11 @@ public class ResourceLoader {
         GameDepot.load();
         // Load spawn data and quests
         loadGadgetConfigData();
+        loadSceneRoutes();
         loadSpawnData();
         loadQuests();
         loadScriptSceneData();
+        loadDungeonDrops();
         // Load scene points - must be done AFTER resources are loaded
         loadScenePoints();
         // Load default home layout
@@ -101,7 +114,11 @@ public class ResourceLoader {
         loadNpcBornData();
         loadBlossomResources();
         cacheTalentLevelSets();
-
+        // Load special ability in certain scene/dungeon
+        loadConfigLevelEntityData();
+        loadQuestShareConfig();
+        loadGadgetMappings();
+        EntityControllerScriptManager.load();
         Grasscutter.getLogger().info(translate("messages.status.resources.finish"));
         loadedAll = true;
     }
@@ -173,7 +190,7 @@ public class ResourceLoader {
         });
     }
 
-    public class ScenePointConfig {  // Sadly this doesn't work as a local class in loadScenePoints()
+    public static class ScenePointConfig {  // Sadly this doesn't work as a local class in loadScenePoints()
         public Map<Integer, PointData> points;
     }
     private static void loadScenePoints() {
@@ -369,6 +386,18 @@ public class ResourceLoader {
         GameDepot.addSpawnListById(areaSort);
     }
 
+    private static void loadDungeonDrops(){
+        try {
+            DataLoader.loadList("DungeonDrop.json", DungeonDrop.class).forEach(entry -> {
+                GameData.getDungeonDropDataMap().put(entry.getDungeonId(), entry.getDrops());
+            });
+            Grasscutter.getLogger().debug("Loaded {} dungeon drop data entries.", GameData.getDungeonDropDataMap().size());
+        }
+        catch (Exception ex) {
+            Grasscutter.getLogger().error("Unable to load dungeon drop data.", ex);
+        }
+    }
+
     private static void loadOpenConfig() {
         // Read from cached file if exists
         List<OpenConfigEntry> list = null;
@@ -417,6 +446,9 @@ public class ResourceLoader {
                 try {
                     val mainQuest = JsonUtils.loadToClass(path, MainQuestData.class);
                     GameData.getMainQuestDataMap().put(mainQuest.getId(), mainQuest);
+                    if(mainQuest.getTalks() != null) {
+                        mainQuest.getTalks().forEach(talkData -> GameData.getQuestTalkMap().put(talkData.getId(), mainQuest.getId()));
+                    }
                 } catch (IOException e) {
 
                 }
@@ -505,7 +537,6 @@ public class ResourceLoader {
                     GameData.getGadgetConfigData().putAll(JsonUtils.loadToMap(path, String.class, ConfigGadget.class));
                 } catch (Exception e) {
                     Grasscutter.getLogger().error("failed to load ConfigGadget entries for " + path.toString(), e);
-                    return;
                 }
             });
 
@@ -515,12 +546,112 @@ public class ResourceLoader {
         }
     }
 
+    private static void loadSceneRoutes() {
+        try {
+            Files.newDirectoryStream(getResourcePath("BinOutput/LevelDesign/Routes/"), "*.json").forEach(path -> {
+                try {
+                    val sceneRoutes = JsonUtils.loadToClass(path, SceneRoutes.class);
+                    val sceneRoutesMap = GameData.getSceneRoutes(sceneRoutes.getSceneId());
+                    if(sceneRoutes.getRoutes() == null){
+                        //Grasscutter.getLogger().info("No routes found for scene {}", sceneRoutes.getSceneId());
+                        return;
+                    }
+                    Arrays.stream(sceneRoutes.getRoutes()).forEach(r -> sceneRoutesMap.put(r.getLocalId(), r));
+                } catch (Exception e) {
+                    Grasscutter.getLogger().error("failed to load scene routes for " + path.toString(), e);
+                }
+            });
+
+            Grasscutter.getLogger().debug("Loaded SceneRoutes for {} scenes.", GameData.getGadgetConfigData().size());
+        } catch (IOException e) {
+            Grasscutter.getLogger().error("Failed to load SceneRoutes folder.");
+        }
+    }
+
     private static void loadBlossomResources() {
         try {
             GameDepot.setBlossomConfig(DataLoader.loadClass("BlossomConfig.json", BlossomConfig.class));
             Grasscutter.getLogger().debug("Loaded BlossomConfig.");
         } catch (IOException e) {
             Grasscutter.getLogger().warn("Failed to load BlossomConfig.");
+        }
+    }
+
+    private static void loadConfigLevelEntityData(){
+        // Load from BinOutput
+        val pattern = Pattern.compile("ConfigLevelEntity_(.+?)\\.json");
+
+        try {
+            Files.newDirectoryStream(getResourcePath("BinOutput/LevelEntity/"), "ConfigLevelEntity_*.json").forEach(path -> {
+                val matcher = pattern.matcher(path.getFileName().toString());
+                if (!matcher.find()) return;
+                Map<String,ConfigLevelEntity> config;
+
+                try {
+                    config = JsonUtils.loadToMap(path, String.class, ConfigLevelEntity.class);
+                } catch (Exception e) {
+                    Grasscutter.getLogger().error("Error loading player ability embryos:", e);
+                    return;
+                }
+                GameData.getConfigLevelEntityDataMap().putAll(config);
+            });
+        } catch (IOException e) {
+            Grasscutter.getLogger().error("Error loading config level entity: no files found");
+            return;
+        }
+
+        if (GameData.getConfigLevelEntityDataMap() == null || GameData.getConfigLevelEntityDataMap().isEmpty()) {
+            Grasscutter.getLogger().error("No config level entity loaded!");
+            return;
+        }
+    }
+
+    private static void loadQuestShareConfig(){
+        // Load from BinOutput
+        val pattern = Pattern.compile("Q(.+?)\\ShareConfig.lua");
+
+        try {
+            Bindings bindings = ScriptLoader.getEngine().createBindings();
+            Files.newDirectoryStream(getResourcePath("Scripts/Quest/Share/"), "Q*ShareConfig.lua").forEach(path -> {
+                val matcher = pattern.matcher(path.getFileName().toString());
+                if (!matcher.find()) return;
+
+                CompiledScript cs = ScriptLoader.getScript("Quest/Share/"+path.getFileName().toString());
+                if (cs == null) return;
+
+                try{
+                    cs.eval(bindings);
+                    // these are Map<String, class>
+                    var teleportDataMap = ScriptLoader.getSerializer().toMap(TeleportData.class, bindings.get("quest_data"));
+                    var rewindDataMap = ScriptLoader.getSerializer().toMap(RewindData.class, bindings.get("rewind_data"));
+                    // convert them to Map<Integer, class> and cache
+                    GameData.getTeleportDataMap().putAll(teleportDataMap.entrySet().stream().collect(Collectors.toMap(entry -> Integer.valueOf(entry.getKey()), Entry::getValue)));
+                    GameData.getRewindDataMap().putAll(rewindDataMap.entrySet().stream().collect(Collectors.toMap(entry -> Integer.valueOf(entry.getKey()), Entry::getValue)));
+
+                } catch (Throwable e){
+                    Grasscutter.getLogger().error("Error while loading Quest Share Config: {}", path.getFileName().toString());
+                }
+            });
+        } catch (IOException e) {
+            Grasscutter.getLogger().error("Error loading Quest Share Config: no files found");
+            return;
+        }
+        if (GameData.getTeleportDataMap() == null || GameData.getTeleportDataMap().isEmpty()
+            || GameData.getRewindDataMap() == null || GameData.getRewindDataMap().isEmpty()) {
+            Grasscutter.getLogger().error("No Quest Share Config loaded!");
+            return;
+        }
+    }
+
+    private static void loadGadgetMappings() {
+        try {
+            val gadgetMap = GameData.getGadgetMappingMap();
+            try {
+                JsonUtils.loadToList(getResourcePath("Server/GadgetMapping.json"), GadgetMapping.class).forEach(entry -> gadgetMap.put(entry.getGadgetId(), entry));;
+            } catch (IOException | NullPointerException ignored) {}
+            Grasscutter.getLogger().debug("Loaded {} gadget mappings.", gadgetMap.size());
+        } catch (Exception e) {
+            Grasscutter.getLogger().error("Unable to load gadget mappings.", e);
         }
     }
 
